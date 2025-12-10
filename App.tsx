@@ -9,61 +9,59 @@ import { generateSqlFromRequirement, autoGenerateTags } from './services/geminiS
 import { DatabaseZap, Layers, Bookmark } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [tables, setTables] = useState<TableDefinition[]>([]);
+  // 1. Lazy Initialization for Tables
+  const [tables, setTables] = useState<TableDefinition[]>(() => {
+      try {
+          const stored = localStorage.getItem('mysql_ai_tables');
+          return stored ? JSON.parse(stored) : [];
+      } catch (e) {
+          console.error("Failed to parse saved tables", e);
+          return [];
+      }
+  });
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [savedSqls, setSavedSqls] = useState<SavedSql[]>([]);
+  
+  // 2. Lazy Initialization for Saved SQLs
+  const [savedSqls, setSavedSqls] = useState<SavedSql[]>(() => {
+      try {
+          const stored = localStorage.getItem('mysql_ai_saved_sqls');
+          return stored ? JSON.parse(stored) : [];
+      } catch (e) {
+          console.error("Failed to parse saved SQLs", e);
+          return [];
+      }
+  });
+
   const [activeSidebarTab, setActiveSidebarTab] = useState<'tables' | 'saved'>('tables');
   const [isLoading, setIsLoading] = useState(false);
   const [isTagging, setIsTagging] = useState(false);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
   
-  // Tag Library State - Default tags
-  const [tagLibrary, setTagLibrary] = useState<string[]>(['北森', '系统', '业务', '用户', '日志', '配置', '财务', '企微']);
-
-  // Load tables from localStorage
-  useEffect(() => {
-    const storedTables = localStorage.getItem('mysql_ai_tables');
-    if (storedTables) {
+  // 3. Lazy Initialization for Tag Library (with defaults)
+  const [tagLibrary, setTagLibrary] = useState<string[]>(() => {
+      const defaultTags = ['北森', '系统', '业务', '用户', '日志', '配置', '财务', '企微'];
       try {
-        setTables(JSON.parse(storedTables));
+          const stored = localStorage.getItem('mysql_ai_tag_library');
+          return stored ? JSON.parse(stored) : defaultTags;
       } catch (e) {
-        console.error("Failed to parse saved tables");
+          return defaultTags;
       }
-    }
-  }, []);
+  });
+
+  // --- Effects for SAVING only (Loading is handled in useState) ---
 
   // Save tables to localStorage
   useEffect(() => {
     localStorage.setItem('mysql_ai_tables', JSON.stringify(tables));
   }, [tables]);
 
-  // Load/Save Tag Library
-  useEffect(() => {
-      const storedLib = localStorage.getItem('mysql_ai_tag_library');
-      if (storedLib) {
-          try {
-              setTagLibrary(JSON.parse(storedLib));
-          } catch(e) {}
-      }
-  }, []);
-
+  // Save Tag Library
   useEffect(() => {
       localStorage.setItem('mysql_ai_tag_library', JSON.stringify(tagLibrary));
   }, [tagLibrary]);
 
-  // Load saved SQLs from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem('mysql_ai_saved_sqls');
-    if (stored) {
-      try {
-        setSavedSqls(JSON.parse(stored));
-      } catch (e) {
-        console.error("Failed to parse saved SQLs");
-      }
-    }
-  }, []);
-
-  // Save to localStorage whenever savedSqls changes
+  // Save SQLs to localStorage
   useEffect(() => {
     localStorage.setItem('mysql_ai_saved_sqls', JSON.stringify(savedSqls));
   }, [savedSqls]);
@@ -114,6 +112,12 @@ const App: React.FC = () => {
     setTables(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  const handleUpdateTableTags = useCallback((tableId: string, newTags: string[]) => {
+      setTables(prev => prev.map(t => 
+          t.id === tableId ? { ...t, tags: newTags } : t
+      ));
+  }, []);
+
   const handleClearTables = useCallback(() => {
       setTables([]);
   }, []);
@@ -154,6 +158,10 @@ const App: React.FC = () => {
 
   const handleRenameSavedSql = useCallback((id: string, newName: string) => {
       setSavedSqls(prev => prev.map(s => s.id === id ? { ...s, name: newName } : s));
+  }, []);
+
+  const handleUpdateSavedSqlCode = useCallback((id: string, newCode: string) => {
+    setSavedSqls(prev => prev.map(s => s.id === id ? { ...s, code: newCode } : s));
   }, []);
 
   const handleDeleteSavedSql = useCallback((id: string) => {
@@ -254,6 +262,7 @@ const App: React.FC = () => {
                         tables={tables} 
                         onRemove={handleRemoveTable} 
                         onClear={handleClearTables}
+                        onUpdateTags={handleUpdateTableTags}
                         onAutoTag={handleAutoTag}
                         onManageTags={() => setIsTagManagerOpen(true)}
                         isTagging={isTagging}
@@ -264,6 +273,7 @@ const App: React.FC = () => {
                         onDelete={handleDeleteSavedSql}
                         onClear={handleClearSavedSqls}
                         onRename={handleRenameSavedSql}
+                        onUpdateCode={handleUpdateSavedSqlCode}
                     />
                 )}
              </div>

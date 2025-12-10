@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Table as TableIcon, Trash2, X, Check, Search, Sparkles, Loader2, Eye, FileCode, Settings2 } from 'lucide-react';
+import { Table as TableIcon, Trash2, X, Check, Search, Sparkles, Loader2, Eye, FileCode, Settings2, Tag, Plus } from 'lucide-react';
 import { TableDefinition } from '../types';
 
 interface TableListProps {
   tables: TableDefinition[];
   onRemove: (id: string) => void;
   onClear: () => void;
+  onUpdateTags: (tableId: string, tags: string[]) => void;
   onAutoTag: () => void;
   onManageTags: () => void;
   isTagging: boolean;
@@ -43,10 +44,91 @@ const DdlModal = ({ table, onClose }: { table: TableDefinition, onClose: () => v
     );
 };
 
-export const TableList: React.FC<TableListProps> = ({ tables, onRemove, onClear, onAutoTag, onManageTags, isTagging }) => {
+// Modal for Editing Tags
+const TagEditModal = ({ table, onClose, onSave }: { table: TableDefinition, onClose: () => void, onSave: (tags: string[]) => void }) => {
+    const [tags, setTags] = useState<string[]>(table.tags || []);
+    const [newTag, setNewTag] = useState('');
+
+    const handleAdd = (e?: React.FormEvent) => {
+        e?.preventDefault();
+        const trimmed = newTag.trim();
+        if (trimmed && !tags.includes(trimmed)) {
+            setTags([...tags, trimmed]);
+            setNewTag('');
+        }
+    };
+
+    const handleRemove = (tag: string) => {
+        setTags(tags.filter(t => t !== tag));
+    };
+
+    const handleSave = () => {
+        onSave(tags);
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full max-w-sm flex flex-col">
+                <div className="flex items-center justify-between p-4 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-blue-400" />
+                        <h3 className="font-semibold text-slate-100">编辑标签 - {table.name}</h3>
+                    </div>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+                
+                <div className="p-4 space-y-4">
+                     <form onSubmit={handleAdd} className="flex gap-2">
+                        <input
+                            type="text"
+                            value={newTag}
+                            onChange={(e) => setNewTag(e.target.value)}
+                            placeholder="输入新标签..."
+                            className="flex-1 bg-slate-950 border border-slate-700 rounded-md py-1.5 px-3 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            autoFocus
+                        />
+                        <button
+                            type="submit"
+                            disabled={!newTag.trim()}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-md transition-colors"
+                        >
+                            <Plus className="w-4 h-4" />
+                        </button>
+                    </form>
+
+                    <div className="flex flex-wrap gap-2 min-h-[60px] bg-slate-950/50 p-2 rounded border border-slate-800">
+                        {tags.length === 0 ? (
+                            <span className="text-xs text-slate-500 italic p-1">暂无标签</span>
+                        ) : (
+                            tags.map(tag => (
+                                <div key={tag} className="flex items-center gap-1 bg-slate-800 text-slate-200 px-2 py-1 rounded text-xs border border-slate-700">
+                                    <span>{tag}</span>
+                                    <button onClick={() => handleRemove(tag)} className="text-slate-500 hover:text-red-400 ml-1">
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
+                    <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white transition-colors">取消</button>
+                    <button onClick={handleSave} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors font-medium">保存修改</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export const TableList: React.FC<TableListProps> = ({ tables, onRemove, onClear, onUpdateTags, onAutoTag, onManageTags, isTagging }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [search, setSearch] = useState('');
   const [viewingTable, setViewingTable] = useState<TableDefinition | null>(null);
+  const [editingTagsTable, setEditingTagsTable] = useState<TableDefinition | null>(null);
 
   if (tables.length === 0) {
     return (
@@ -160,6 +242,13 @@ export const TableList: React.FC<TableListProps> = ({ tables, onRemove, onClear,
                             <Eye className="w-3.5 h-3.5" />
                         </button>
                         <button
+                            onClick={() => setEditingTagsTable(table)}
+                            className="text-slate-500 hover:text-indigo-400 p-1"
+                            title="编辑标签"
+                        >
+                            <Tag className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                             onClick={() => onRemove(table.id)}
                             className="text-slate-500 hover:text-red-400 p-1"
                             title="移除"
@@ -186,6 +275,14 @@ export const TableList: React.FC<TableListProps> = ({ tables, onRemove, onClear,
 
         {viewingTable && (
             <DdlModal table={viewingTable} onClose={() => setViewingTable(null)} />
+        )}
+        
+        {editingTagsTable && (
+            <TagEditModal 
+                table={editingTagsTable} 
+                onClose={() => setEditingTagsTable(null)} 
+                onSave={(newTags) => onUpdateTags(editingTagsTable.id, newTags)}
+            />
         )}
     </>
   );

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, Copy, Check, Trash2, Code, Pencil, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Search, Copy, Check, Trash2, Code, Pencil, X, Eye, Save } from 'lucide-react';
 import { SavedSql } from '../types';
 
 interface SavedSqlListProps {
@@ -7,38 +7,153 @@ interface SavedSqlListProps {
   onDelete: (id: string) => void;
   onClear: () => void;
   onRename: (id: string, newName: string) => void;
+  onUpdateCode: (id: string, newCode: string) => void;
 }
 
-export const SavedSqlList: React.FC<SavedSqlListProps> = ({ items, onDelete, onClear, onRename }) => {
+const SqlDetailModal = ({ 
+    item, 
+    onClose, 
+    onSave 
+}: { 
+    item: SavedSql, 
+    onClose: () => void, 
+    onSave: (code: string) => void 
+}) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [code, setCode] = useState(item.code);
+    const codeRef = useRef<HTMLElement>(null);
+
+    // Re-highlight when switching back to view mode
+    useEffect(() => {
+        if (!isEditing && codeRef.current && window.Prism) {
+            window.Prism.highlightElement(codeRef.current);
+        }
+    }, [isEditing, code]);
+
+    const handleSave = () => {
+        onSave(code);
+        setIsEditing(false);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full max-w-3xl flex flex-col h-[80vh]">
+                <div className="flex items-center justify-between p-4 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                        <Code className="w-5 h-5 text-blue-400" />
+                        <h3 className="font-semibold text-slate-100 truncate max-w-md">{item.name}</h3>
+                    </div>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+                
+                <div className="flex-1 overflow-hidden relative bg-[#1d1f21]">
+                    {isEditing ? (
+                        <textarea
+                            value={code}
+                            onChange={(e) => setCode(e.target.value)}
+                            className="w-full h-full bg-[#1d1f21] text-slate-200 font-mono text-sm p-4 resize-none focus:outline-none"
+                            spellCheck={false}
+                        />
+                    ) : (
+                        <div className="h-full overflow-auto custom-scrollbar p-4">
+                            <pre className="!m-0 !p-0 !bg-transparent text-sm">
+                                <code ref={codeRef} className="language-sql">{code}</code>
+                            </pre>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-4 border-t border-slate-800 flex justify-between items-center bg-slate-900">
+                     <div className="text-xs text-slate-500">
+                        {new Date(item.timestamp).toLocaleString()}
+                     </div>
+                     <div className="flex gap-3">
+                         {isEditing ? (
+                            <>
+                                <button 
+                                    onClick={() => { setCode(item.code); setIsEditing(false); }}
+                                    className="px-3 py-1.5 text-sm text-slate-400 hover:text-white transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button 
+                                    onClick={handleSave}
+                                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors font-medium"
+                                >
+                                    <Save className="w-4 h-4" />
+                                    保存
+                                </button>
+                            </>
+                         ) : (
+                            <>
+                                <button 
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(code);
+                                        // Optional toast here
+                                    }}
+                                    className="px-3 py-1.5 text-sm text-slate-400 hover:text-white transition-colors flex items-center gap-2"
+                                >
+                                    <Copy className="w-4 h-4" />
+                                    复制
+                                </button>
+                                <button 
+                                    onClick={() => setIsEditing(true)}
+                                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-white rounded transition-colors"
+                                >
+                                    <Pencil className="w-4 h-4" />
+                                    编辑
+                                </button>
+                            </>
+                         )}
+                     </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export const SavedSqlList: React.FC<SavedSqlListProps> = ({ items, onDelete, onClear, onRename, onUpdateCode }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [viewingItem, setViewingItem] = useState<SavedSql | null>(null);
 
   const filteredItems = items.filter(item => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleCopy = (id: string, code: string) => {
+  const handleCopy = (e: React.MouseEvent, id: string, code: string) => {
+    e.stopPropagation();
     navigator.clipboard.writeText(code);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const startEdit = (item: SavedSql) => {
+  const startEdit = (e: React.MouseEvent, item: SavedSql) => {
+      e.stopPropagation();
       setEditingId(item.id);
       setEditName(item.name);
   };
 
-  const saveEdit = () => {
+  const saveEdit = (e?: React.FormEvent) => {
+      e?.stopPropagation(); // Prevent opening modal
       if (editingId && editName.trim()) {
           onRename(editingId, editName.trim());
       }
       setEditingId(null);
   };
+  
+  const handleItemClick = (item: SavedSql) => {
+      if (editingId) return; // Don't open if renaming
+      setViewingItem(item);
+  };
 
   return (
+    <>
     <div className="flex flex-col h-full">
       <div className="mb-4">
           <div className="relative">
@@ -76,10 +191,14 @@ export const SavedSqlList: React.FC<SavedSqlListProps> = ({ items, onDelete, onC
           </div>
         ) : (
           filteredItems.map(item => (
-            <div key={item.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 hover:border-slate-600 transition-colors group">
+            <div 
+                key={item.id} 
+                onClick={() => handleItemClick(item)}
+                className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 hover:border-blue-500/50 hover:bg-slate-800 transition-all group cursor-pointer"
+            >
                <div className="flex justify-between items-start mb-2">
                    {editingId === item.id ? (
-                       <div className="flex items-center gap-2 w-full mr-2">
+                       <div className="flex items-center gap-2 w-full mr-2" onClick={e => e.stopPropagation()}>
                            <input 
                                 autoFocus
                                 value={editName}
@@ -88,30 +207,30 @@ export const SavedSqlList: React.FC<SavedSqlListProps> = ({ items, onDelete, onC
                                 onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
                            />
                            <button onClick={saveEdit} className="text-green-400 hover:text-green-300"><Check className="w-4 h-4" /></button>
-                           <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-300"><X className="w-4 h-4" /></button>
+                           <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="text-slate-400 hover:text-slate-300"><X className="w-4 h-4" /></button>
                        </div>
                    ) : (
                        <>
-                        <div className="font-medium text-blue-400 text-sm truncate pr-2 cursor-pointer hover:text-blue-300" title={item.name} onClick={() => startEdit(item)}>
+                        <div className="font-medium text-blue-400 text-sm truncate pr-2" title={item.name}>
                             {item.name}
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button 
-                                onClick={() => startEdit(item)}
-                                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded"
-                                title="重命名"
-                            >
-                                <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button 
-                                onClick={() => handleCopy(item.id, item.code)}
+                             <button 
+                                onClick={(e) => handleCopy(e, item.id, item.code)}
                                 className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded"
                                 title="复制 SQL"
                             >
                                 {copiedId === item.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
                             </button>
                             <button 
-                                onClick={() => onDelete(item.id)}
+                                onClick={(e) => startEdit(e, item)}
+                                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded"
+                                title="重命名"
+                            >
+                                <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
                                 className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded"
                                 title="删除"
                             >
@@ -121,12 +240,16 @@ export const SavedSqlList: React.FC<SavedSqlListProps> = ({ items, onDelete, onC
                        </>
                    )}
                </div>
-               <div className="text-xs text-slate-500 font-mono bg-slate-900/50 p-2 rounded truncate">
+               <div className="text-xs text-slate-500 font-mono bg-slate-900/50 p-2 rounded truncate border border-transparent group-hover:border-slate-700/50">
                    {item.code.substring(0, 50)}...
                </div>
                <div className="mt-2 flex justify-between items-center">
                    <span className="text-[10px] text-slate-600">
                        {new Date(item.timestamp).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})}
+                   </span>
+                   <span className="text-[10px] text-blue-500/50 flex items-center gap-1 group-hover:text-blue-400">
+                       <Eye className="w-3 h-3" />
+                       查看详情
                    </span>
                </div>
             </div>
@@ -134,5 +257,14 @@ export const SavedSqlList: React.FC<SavedSqlListProps> = ({ items, onDelete, onC
         )}
       </div>
     </div>
+    
+    {viewingItem && (
+        <SqlDetailModal 
+            item={viewingItem} 
+            onClose={() => setViewingItem(null)} 
+            onSave={(newCode) => onUpdateCode(viewingItem.id, newCode)}
+        />
+    )}
+    </>
   );
 };
